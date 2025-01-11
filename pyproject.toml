@@ -1,13 +1,15 @@
 [project]
 name = "codequest-backend"
 version = "0.1.0"
-description = "python backend for code-quest"
+description = "backend for code-quest"
 authors = [
-    {name = "Gaurav-Krishna-Gaali",email = "gaali.gk19@gmail.com"}
+    {name = "gaali.gk19@gmail.com"}
 ]
 readme = "README.md"
-requires-python = "3.10"
+requires-python = ">=3.13,<4.0"
 dependencies = [
+    "fastapi[standard] (>=0.115.6,<0.116.0)",
+    "supabase (>=2.11.0,<3.0.0)"
 ]
 
 
