@@ -1,6 +1,11 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
-from .supabase_client import fetch_questions, fetch_test_cases_for_question
+from .supabase_client import (
+    fetch_questions,
+    fetch_test_cases_for_question,
+    insert_user,
+    insert_solution,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import requests
@@ -21,9 +26,29 @@ PISTON_URL = "https://emkc.org/api/v2/piston/execute"
 
 class SolutionRequest(BaseModel):
     question_id: int
+    provider_id: str
     code: str
     language: str = "python"
     version: str = "3.10.0"
+
+
+class UserRequest(BaseModel):
+    email: str
+    username: str = None
+    profile_pic: str = None
+    provider: str
+    provider_id: str
+
+
+@app.post("/login")
+async def login_user(user: UserRequest):
+    try:
+        result = insert_user(user.dict())
+        if not result:
+            raise HTTPException(status_code=500, detail="Failed to insert user")
+        return {"message": "User logged in successfully", "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
 
 
 @app.get("/")
@@ -98,6 +123,7 @@ async def submit_solution(solution: SolutionRequest):
         test_cases = fetch_test_cases_for_question(solution.question_id)
         modified_code = solution.code
         test_results = []
+        all_tests_passed = True
 
         for test_case in test_cases:
             input_value = test_case["input"]
@@ -106,7 +132,6 @@ async def submit_solution(solution: SolutionRequest):
             result = execute_code_on_piston(
                 modified_code, input_value, solution.language, solution.version
             )
-            print(result)
 
             actual_output = (
                 result.get("run", "").get("output", "").strip()
@@ -123,7 +148,22 @@ async def submit_solution(solution: SolutionRequest):
                 }
             )
 
-        # Return the results of all test cases
+            if not pass_test:
+                print(f"Test {test_case['id']} failed")
+                all_tests_passed = False
+
+        if all_tests_passed:
+            print("All tests passed")
+            solution_dict = solution.dict()
+            solution_dict["is_correct"] = True
+            insert_solution(solution_dict)
+        else:
+            print("Not all tests passed")
+            solution_dict = solution.dict()
+            solution_dict["is_correct"] = False
+            print(solution_dict)
+            insert_solution(solution_dict)
+
         return JSONResponse(test_results)
 
     except Exception as e:
