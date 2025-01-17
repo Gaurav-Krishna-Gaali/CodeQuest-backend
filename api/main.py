@@ -5,10 +5,13 @@ from .supabase_client import (
     fetch_test_cases_for_question,
     insert_user,
     insert_solution,
+    fetch_solutions_for_user,
+    get_user_id_by_provider,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import requests
+import re
 
 app = FastAPI()
 
@@ -38,6 +41,13 @@ class UserRequest(BaseModel):
     profile_pic: str = None
     provider: str
     provider_id: str
+
+
+class SubmittedSolution(BaseModel):
+    question_id: str
+    submitted_code: str = None
+    is_correct: bool = False
+    submitted_at: str
 
 
 @app.post("/login")
@@ -89,7 +99,7 @@ async def get_test_cases(question_id: int):
 # Helper function to call the Piston API
 def execute_code_on_piston(
     modified_code: str,
-    input_value: str,
+    input_value: list,
     language: str = "python",
     version: str = "3.10.0",
 ) -> dict:
@@ -106,7 +116,6 @@ def execute_code_on_piston(
 
     try:
         response = requests.post(PISTON_URL, json=payload)
-        print(response.content)
         response.raise_for_status()  # Will raise HTTPError for bad responses (4xx or 5xx)
     except requests.exceptions.RequestException as e:
         print(f"Error with Piston API request: {e}")
@@ -117,20 +126,27 @@ def execute_code_on_piston(
     return response.json()
 
 
+def replace_main_block(testcase, code):
+    pattern = r'if __name__ == "__main__":\s*print\(main\(input\(\)\)\)'
+    return re.sub(pattern, f"print(main({testcase}))", code)
+
+
 @app.post("/submit-solution")
 async def submit_solution(solution: SolutionRequest):
     try:
         test_cases = fetch_test_cases_for_question(solution.question_id)
         modified_code = solution.code
+
         test_results = []
         all_tests_passed = True
 
         for test_case in test_cases:
             input_value = test_case["input"]
             expected_output = test_case["expected_output"]
+            new_modified_code = replace_main_block(test_case["input"], modified_code)
 
             result = execute_code_on_piston(
-                modified_code, input_value, solution.language, solution.version
+                new_modified_code, input_value, solution.language, solution.version
             )
 
             actual_output = (
@@ -169,3 +185,17 @@ async def submit_solution(solution: SolutionRequest):
     except Exception as e:
         print(f"Error: {e}")
         raise HTTPException(status_code=500, detail="An unexpected error occurred")
+
+
+@app.get("/solutions/{provider_id}")
+async def get_solutions(provider_id: str):
+    try:
+        user_id = get_user_id_by_provider(provider_id)
+        solutions = fetch_solutions_for_user(user_id)
+        solutions_collection = [
+            {k: v for k, v in solution.items() if k != "user_id"}
+            for solution in solutions
+        ]
+        return JSONResponse(solutions_collection)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
