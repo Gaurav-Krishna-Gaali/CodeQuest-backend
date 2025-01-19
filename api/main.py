@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
-from .supabase_client import (
+from supabase_client import (
     fetch_questions,
     fetch_test_cases_for_question,
     insert_user,
