@@ -13,7 +13,6 @@ from pydantic import BaseModel
 import requests
 import re
 
-# deploy to vercel
 app = FastAPI()
 
 # CORS Middleware
